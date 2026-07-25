@@ -36,6 +36,32 @@ export async function accountIdToEvmAddress(
   }
 }
 
+/**
+ * Resolves an EVM address to its native Hedera account id (0.0.x).
+ *
+ * Every wallet reaches us over the EVM JSON-RPC relay now, so this is what
+ * turns 0x42cd…3d7d into the 0.0.x form users actually recognise on Hedera.
+ * Returns null for an address that has never been funded — Hedera only
+ * assigns an account id once the address exists on the ledger.
+ */
+export async function evmAddressToAccountId(
+  address: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${MIRROR_BASE}/accounts/${address}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data?.account as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function hashscanAccount(idOrAddress: string): string | null {
+  if (!HASHSCAN_BASE) return null;
+  return `${HASHSCAN_BASE}/account/${idOrAddress}`;
+}
+
 export function hashscanTx(ref: string): string | null {
   if (!HASHSCAN_BASE) return null;
   // EVM tx hashes are 0x-prefixed; Hedera tx ids look like 0.0.x@seconds.nanos

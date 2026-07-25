@@ -1,22 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatEther } from "viem";
 import { useAccount } from "wagmi";
 import { EMBERLEND_ADDRESS, emberlendAbi, isContractConfigured } from "./contract";
-import { useHashConnect } from "./hashconnect";
-import { accountIdToEvmAddress } from "./mirror";
 import { publicClient } from "./publicClient";
 
-/** Trims trailing zeros so 12.500000 reads as 12.5, and flags sub-dust amounts. */
-export function fmtHbar(wei?: bigint, dp = 4): string {
-  if (wei === undefined) return "—";
-  const n = Number(formatEther(wei));
-  if (n === 0) return "0";
-  if (n < 0.0001) return "<0.0001";
-  return n.toLocaleString(undefined, { maximumFractionDigits: dp });
-}
+export { fmtHbar } from "./units";
 
+/**
+ * All bigint amounts below are **tinybar** (8 dp), because that is what the
+ * contract stores and returns on Hedera. See ./units.ts.
+ */
 export type LoanState = {
   address?: `0x${string}`;
   loading: boolean;
@@ -32,7 +26,8 @@ export type LoanState = {
   totalBorrowed?: bigint;
   ratioBps?: bigint;
   rateBps?: bigint;
-  maxBorrowFor: (collateralWei: bigint) => bigint;
+  /** Max borrow (tinybar) for a given collateral, from the on-chain ratio. */
+  maxBorrowFor: (collateralTinybar: bigint) => bigint;
   refetch: () => void;
 };
 
@@ -43,34 +38,14 @@ const POLL_MS = 15_000;
 /**
  * Reads live pool + borrower state from EmberLendPool.
  *
- * Works in all three states: no wallet (pool figures only), MetaMask (address
- * straight from wagmi), and HashPack (0.0.x id resolved to its EVM alias via
- * the mirror node).
+ * Pool-wide figures load with no wallet connected; borrower figures fill in
+ * once Reown reports an address.
  */
 export function useLoanState(): LoanState {
-  const { address: evmAddress } = useAccount();
-  const { accountId } = useHashConnect();
-  const [resolved, setResolved] = useState<`0x${string}` | undefined>();
+  const { address } = useAccount();
   const [snap, setSnap] = useState<Snapshot>({ hasLoan: false });
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
-
-  // HashPack gives a native account id; map it to the EVM alias for eth_call.
-  useEffect(() => {
-    let cancelled = false;
-    if (evmAddress || !accountId) {
-      setResolved(undefined);
-      return;
-    }
-    accountIdToEvmAddress(accountId).then((addr) => {
-      if (!cancelled) setResolved(addr ?? undefined);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accountId, evmAddress]);
-
-  const address = evmAddress ?? resolved;
 
   useEffect(() => {
     if (!isContractConfigured) {
@@ -162,9 +137,9 @@ export function useLoanState(): LoanState {
   return {
     ...snap,
     loading,
-    maxBorrowFor: (collateralWei: bigint) =>
+    maxBorrowFor: (collateralTinybar: bigint) =>
       snap.ratioBps && snap.ratioBps > 0n
-        ? (collateralWei * 10_000n) / snap.ratioBps
+        ? (collateralTinybar * 10_000n) / snap.ratioBps
         : 0n,
     refetch,
   };

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatEther, parseEther } from "viem";
 import { Nav } from "@/components/Nav";
 import { useEmberlend } from "@/lib/useEmberlend";
-import { useLoanState, fmtHbar } from "@/lib/useLoanState";
+import { useLoanState } from "@/lib/useLoanState";
+import { fmtHbar, safeHbarToTinybar, tinybarToHbar } from "@/lib/units";
 import { EMBERLEND_CONTRACT_ID, isContractConfigured } from "@/lib/contract";
 import { hashscanContract, hashscanTx } from "@/lib/mirror";
 
@@ -24,12 +24,13 @@ export default function Dashboard() {
   const canAct = connected && isContractConfigured && !status.pending;
 
   // Max borrow comes from the contract's own collateral ratio, not a guess.
-  const collateralWei = safeParse(collateral);
-  const maxBorrowWei = collateralWei ? loan.maxBorrowFor(collateralWei) : 0n;
-  const borrowWei = safeParse(borrowAmt);
-  const overMax = !!borrowWei && !!maxBorrowWei && borrowWei > maxBorrowWei;
+  // Everything here is tinybar, matching what the contract stores.
+  const collateralTb = safeHbarToTinybar(collateral);
+  const maxBorrowTb = collateralTb ? loan.maxBorrowFor(collateralTb) : 0n;
+  const borrowTb = safeHbarToTinybar(borrowAmt);
+  const overMax = !!borrowTb && !!maxBorrowTb && borrowTb > maxBorrowTb;
   const overLiquidity =
-    !!borrowWei && loan.liquidity !== undefined && borrowWei > loan.liquidity;
+    !!borrowTb && loan.liquidity !== undefined && borrowTb > loan.liquidity;
 
   const ltvPct = loan.ratioBps ? (10_000 / Number(loan.ratioBps)) * 100 : null;
   const ratePct = loan.rateBps ? Number(loan.rateBps) / 100 : null;
@@ -40,7 +41,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (loan.due && loan.hasLoan) {
       const buffered = (loan.due * 10_050n) / 10_000n;
-      setRepayAmt(formatEther(buffered));
+      setRepayAmt(tinybarToHbar(buffered));
     }
   }, [loan.due, loan.hasLoan]);
 
@@ -195,7 +196,7 @@ export default function Dashboard() {
                     Max borrow
                     {ltvPct ? ` at ${ltvPct.toFixed(1)}% LTV` : ""}:{" "}
                     <span className="font-semibold text-primary">
-                      {fmtHbar(maxBorrowWei)} ℏ
+                      {fmtHbar(maxBorrowTb)} ℏ
                     </span>
                   </div>
                   <Field
@@ -273,16 +274,6 @@ export default function Dashboard() {
       </main>
     </>
   );
-}
-
-/** parseEther throws on partial input like "0." — treat that as no value. */
-function safeParse(v: string): bigint | null {
-  if (!v.trim()) return null;
-  try {
-    return parseEther(v);
-  } catch {
-    return null;
-  }
 }
 
 function Stat({

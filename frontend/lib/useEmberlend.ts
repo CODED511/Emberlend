@@ -1,40 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { parseEther } from "viem";
 import { useAccount, useWriteContract } from "wagmi";
-import {
-  EMBERLEND_ADDRESS,
-  EMBERLEND_CONTRACT_ID,
-  emberlendAbi,
-} from "./contract";
-import { useHashConnect } from "./hashconnect";
+import { EMBERLEND_ADDRESS, emberlendAbi } from "./contract";
+import { hbarToTinybar, hbarToWeibar } from "./units";
 
 export type ActionState = {
   pending: boolean;
   error?: string;
-  ref?: string; // tx hash (EVM) or tx id (HashPack)
+  ref?: string; // transaction hash
 };
 
 /**
- * Unified borrow/repay/supply that works with either wallet:
- *  - EVM (MetaMask via Reown)  -> wagmi writeContract
- *  - HashPack (via HashConnect) -> Hedera SDK ContractExecuteTransaction
+ * Borrow / repay / supply against EmberLendPool.
  *
- * On Hedera EVM, msg.value is denominated in weibar (1 HBAR = 1e18), so
- * parseEther() is the correct unit for both value and the uint256 principal.
+ * Every wallet — HashPack, MetaMask, WalletConnect, email and socials — comes
+ * through Reown AppKit and signs over the Hedera JSON-RPC relay, so there is a
+ * single wagmi code path here.
+ *
+ * Units matter: a transaction's `value` is weibar, but any amount *argument*
+ * the contract takes is tinybar, because the relay divides value by 1e10
+ * before the contract sees it. See ./units.ts.
  */
 export function useEmberlend() {
-  const { isConnected: evmConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  const { accountId, hc } = useHashConnect();
   const [status, setStatus] = useState<ActionState>({ pending: false });
 
-  const wallet: "evm" | "hashpack" | null = evmConnected
-    ? "evm"
-    : accountId
-      ? "hashpack"
-      : null;
+  const wallet = isConnected ? ("evm" as const) : null;
 
   async function run(fn: () => Promise<string>) {
     setStatus({ pending: true });
@@ -43,93 +36,48 @@ export function useEmberlend() {
       setStatus({ pending: false, ref });
       return ref;
     } catch (e: any) {
-      setStatus({ pending: false, error: e?.shortMessage ?? e?.message ?? "Transaction failed" });
+      setStatus({
+        pending: false,
+        error: e?.shortMessage ?? e?.message ?? "Transaction failed",
+      });
       throw e;
     }
   }
 
-  async function execHashpack(
-    fnName: "supply" | "borrow" | "repay",
-    payableHbar?: string,
-    principalWeibar?: bigint,
-  ): Promise<string> {
-    const {
-      ContractExecuteTransaction,
-      ContractFunctionParameters,
-      ContractId,
-      Hbar,
-      AccountId,
-    } = await import("@hashgraph/sdk");
-    const BigNumber = (await import("bignumber.js")).default;
-
-    const signer = hc!.getSigner(AccountId.fromString(accountId!) as any);
-    let tx = new ContractExecuteTransaction()
-      .setContractId(ContractId.fromString(EMBERLEND_CONTRACT_ID))
-      .setGas(600_000);
-
-    if (payableHbar) tx = tx.setPayableAmount(new Hbar(payableHbar));
-
-    if (fnName === "borrow") {
-      tx = tx.setFunction(
-        "borrow",
-        new ContractFunctionParameters().addUint256(
-          new BigNumber(principalWeibar!.toString()),
-        ),
-      );
-    } else {
-      tx = tx.setFunction(fnName);
-    }
-
-    const frozen = await tx.freezeWithSigner(signer as any);
-    const resp = await frozen.executeWithSigner(signer as any);
-    return resp.transactionId.toString();
-  }
-
   async function supply(amountHbar: string) {
-    return run(async () => {
-      const value = parseEther(amountHbar);
-      if (wallet === "evm") {
-        return writeContractAsync({
-          address: EMBERLEND_ADDRESS,
-          abi: emberlendAbi,
-          functionName: "supply",
-          value,
-        });
-      }
-      return execHashpack("supply", amountHbar);
-    });
+    return run(() =>
+      writeContractAsync({
+        address: EMBERLEND_ADDRESS,
+        abi: emberlendAbi,
+        functionName: "supply",
+        value: hbarToWeibar(amountHbar),
+      }),
+    );
   }
 
   async function borrow(collateralHbar: string, principalHbar: string) {
-    return run(async () => {
-      const collateral = parseEther(collateralHbar);
-      const principal = parseEther(principalHbar);
-      if (wallet === "evm") {
-        return writeContractAsync({
-          address: EMBERLEND_ADDRESS,
-          abi: emberlendAbi,
-          functionName: "borrow",
-          args: [principal],
-          value: collateral,
-        });
-      }
-      return execHashpack("borrow", collateralHbar, principal);
-    });
+    return run(() =>
+      writeContractAsync({
+        address: EMBERLEND_ADDRESS,
+        abi: emberlendAbi,
+        functionName: "borrow",
+        // principal is a plain uint256 the contract compares against
+        // msg.value, so it must be tinybar — not weibar.
+        args: [hbarToTinybar(principalHbar)],
+        value: hbarToWeibar(collateralHbar),
+      }),
+    );
   }
 
   async function repay(dueHbar: string) {
-    return run(async () => {
-      const value = parseEther(dueHbar);
-      if (wallet === "evm") {
-        return writeContractAsync({
-          address: EMBERLEND_ADDRESS,
-          abi: emberlendAbi,
-          functionName: "repay",
-          value,
-        });
-      }
-      return execHashpack("repay", dueHbar);
-    });
+    return run(() =>
+      writeContractAsync({
+        address: EMBERLEND_ADDRESS,
+        abi: emberlendAbi,
+        functionName: "repay",
+        value: hbarToWeibar(dueHbar),
+      }),
+    );
   }
 
   return { wallet, status, supply, borrow, repay };

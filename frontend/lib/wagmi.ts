@@ -11,9 +11,12 @@ export const projectId =
   process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "REPLACE_WITH_REOWN_PROJECT_ID";
 
 /**
- * Hedera EVM networks. Note: the JSON-RPC relay represents native value with
- * 18 decimals (weibar), so viem/wagmi treat HBAR as an 18-decimal currency —
- * parseEther/formatEther work as expected.
+ * Hedera EVM networks.
+ *
+ * The relay takes a transaction's `value` in 18-decimal weibar, so wagmi/viem
+ * treat HBAR as an 18-decimal currency here. Careful: the contract itself sees
+ * 8-decimal tinybar, so amounts passed as *arguments* or read back from
+ * contract state use a different scale — see ./units.ts.
  */
 export const hederaTestnet = defineChain({
   id: 296,
