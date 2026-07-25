@@ -11,7 +11,22 @@ async function main() {
 
   const addr = await pool.getAddress();
   console.log(`EmberLendPool deployed at: ${addr}`);
-  console.log(`Verify on HashScan: https://hashscan.io/${network.name}/contract/${addr}`);
+
+  // HashScan uses "testnet"/"mainnet", not our Hardhat network names.
+  const scan =
+    network.name === "hederaTestnet"
+      ? "testnet"
+      : network.name === "hederaMainnet"
+        ? "mainnet"
+        : null;
+
+  if (scan) {
+    console.log(`HashScan: https://hashscan.io/${scan}/contract/${addr}`);
+    // The 0.0.x id appears on the mirror node a few seconds after deployment.
+    console.log(
+      `Mirror node: https://${scan}.mirrornode.hedera.com/api/v1/contracts/${addr}`
+    );
+  }
 }
 
 main().catch((e) => {
