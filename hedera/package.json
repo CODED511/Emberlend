@@ -1,0 +1,19 @@
+{
+  "name": "emberlend-hedera",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "create:token": "tsx scripts/createLoanToken.ts",
+    "create:topic": "tsx scripts/createCreditTopic.ts",
+    "log:event": "tsx scripts/logCreditEvent.ts"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.53.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}

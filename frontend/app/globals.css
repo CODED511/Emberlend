@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #080503;
+  --surface: #140d09;
+  --surface-raised: #1e1410;
+  --border: #3a2318;
+  --primary: #f26522;
+  --primary-bright: #ff7a33;
+  --text: #f5ede8;
+  --text-muted: #a2938b;
+  --success: #4ade80;
+  --danger: #e5484d;
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Signature ember glow used behind hero + cards */
+.ember-surface {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+.ember-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(242, 101, 34, 0.15),
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.ember-btn {
+  background: linear-gradient(90deg, #e85d2a 0%, #b97a7c 100%);
+  color: #100a06;
+  font-weight: 700;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+.ember-btn:hover {
+  filter: brightness(1.08);
+}
+.ember-btn:active {
+  transform: translateY(1px);
+}
+
+.pill {
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--surface-raised);
+  color: var(--primary);
+  font-weight: 600;
+}

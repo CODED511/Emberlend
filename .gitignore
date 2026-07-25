@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+dist/
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+*.log
+.DS_Store
+.vercel
+
+# Secrets — never commit. Only *.example files are tracked.
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.key
+*.pem
+id_*.txt
+operator*.json
