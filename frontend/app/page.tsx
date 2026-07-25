@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 
+const CONTRACT_ID =
+  process.env.NEXT_PUBLIC_EMBERLEND_CONTRACT_ID ?? "not deployed";
+
 const stats = [
-  { label: "50/50 collateral", value: "150% LTV floor" },
+  { label: "Collateral ratio", value: "150% minimum" },
   { label: "Powered by", value: "Hedera HTS + HCS" },
-  { label: "Status", value: "Localhost dev" },
+  { label: "Contract", value: CONTRACT_ID },
 ];
 
 export default function Home() {
@@ -15,9 +18,14 @@ export default function Home() {
         {/* Hero */}
         <section className="ember-surface mt-10 px-8 py-16 shadow-ember sm:px-14 sm:py-20">
           <div className="relative z-10 max-w-2xl">
-            <span className="pill inline-block px-3 py-1 text-xs">
-              🟢 LIVE ON LOCALHOST
-            </span>
+            <a
+              href={`https://hashscan.io/testnet/contract/${CONTRACT_ID}`}
+              target="_blank"
+              rel="noreferrer"
+              className="pill inline-block px-3 py-1 text-xs hover:brightness-125"
+            >
+              🟢 LIVE ON HEDERA TESTNET
+            </a>
             <h1 className="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
               Small sparks.
               <br />
@@ -100,7 +108,15 @@ export default function Home() {
       </main>
 
       <footer className="border-t border-border/60 py-8 text-center text-sm text-text-muted">
-        Emberlend · Micro-lending on Hedera · Localhost build
+        Emberlend · Micro-lending on Hedera ·{" "}
+        <a
+          href={`https://hashscan.io/testnet/contract/${CONTRACT_ID}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary hover:underline"
+        >
+          {CONTRACT_ID} on HashScan
+        </a>
       </footer>
     </>
   );
