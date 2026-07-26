@@ -57,6 +57,28 @@ export async function evmAddressToAccountId(
   }
 }
 
+/**
+ * Native HBAR balance in **tinybar**, straight from the mirror node.
+ *
+ * Preferred over eth_getBalance because the mirror node is the ledger's own
+ * view and reports tinybar directly — no weibar/tinybar conversion to get
+ * wrong, and no dependence on relay behaviour. Returns null if the account
+ * isn't on the ledger yet, so callers can fall back to the relay.
+ */
+export async function accountBalanceTinybar(
+  addressOrId: string,
+): Promise<bigint | null> {
+  try {
+    const res = await fetch(`${MIRROR_BASE}/accounts/${addressOrId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const bal = data?.balance?.balance;
+    return bal === undefined || bal === null ? null : BigInt(bal);
+  } catch {
+    return null;
+  }
+}
+
 export function hashscanAccount(idOrAddress: string): string | null {
   if (!HASHSCAN_BASE) return null;
   return `${HASHSCAN_BASE}/account/${idOrAddress}`;

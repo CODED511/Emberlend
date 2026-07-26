@@ -7,6 +7,7 @@ import { publicClient } from "./publicClient";
 import { marketAbi, erc20Abi } from "./marketAbi";
 import { MARKET_ADDRESS, TOKENS, TokenMeta } from "./tokens";
 import { WEIBAR_PER_TINYBAR } from "./units";
+import { accountBalanceTinybar } from "./mirror";
 
 /** Health factor sentinel the contract returns when an account has no debt. */
 export const NO_DEBT = (1n << 256n) - 1n;
@@ -164,7 +165,18 @@ export function useMarket(): MarketState {
               }))
             : [];
 
-        const [results, nativeBal, account] = await Promise.all([
+        // Native balance comes from the mirror node in tinybar. Falling back
+        // to eth_getBalance (weibar) only if the account isn't indexed yet.
+        const nativeBalPromise = address
+          ? accountBalanceTinybar(address).then(async (tb) =>
+              tb !== null
+                ? tb
+                : (await publicClient.getBalance({ address })) /
+                  WEIBAR_PER_TINYBAR,
+            )
+          : Promise.resolve(0n);
+
+        const [results, nativeTinybar, account] = await Promise.all([
           publicClient.multicall({
             contracts: [
               ...marketCalls,
@@ -174,9 +186,7 @@ export function useMarket(): MarketState {
             ] as any,
             allowFailure: true,
           }),
-          address
-            ? publicClient.getBalance({ address })
-            : Promise.resolve(0n),
+          nativeBalPromise,
           address
             ? publicClient.readContract({
                 address: MARKET_ADDRESS,
@@ -210,9 +220,8 @@ export function useMarket(): MarketState {
 
           let walletBalance = 0n;
           if (address) {
-            // eth_getBalance reports weibar; the rest of the app speaks
-            // tinybar for native amounts, so scale it down by 1e10.
-            if (token.isNative) walletBalance = nativeBal / WEIBAR_PER_TINYBAR;
+            // Already tinybar — see nativeBalPromise above.
+            if (token.isNative) walletBalance = nativeTinybar;
             else {
               walletBalance = (val(erc20Cursor) as bigint) ?? 0n;
               erc20Cursor += 1;
