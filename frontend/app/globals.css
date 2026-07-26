@@ -55,6 +55,35 @@ body {
   transform: translateY(1px);
 }
 
+/* Percentage slider in the supply/withdraw dialog. */
+.ember-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  outline: none;
+}
+.ember-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--primary);
+  box-shadow: 0 0 12px -2px rgba(242, 101, 34, 0.8);
+  cursor: pointer;
+}
+.ember-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: var(--primary);
+  box-shadow: 0 0 12px -2px rgba(242, 101, 34, 0.8);
+  cursor: pointer;
+}
+
 .pill {
   border: 1px solid var(--border);
   border-radius: 9999px;

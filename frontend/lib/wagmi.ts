@@ -18,6 +18,14 @@ export const projectId =
  * 8-decimal tinybar, so amounts passed as *arguments* or read back from
  * contract state use a different scale — see ./units.ts.
  */
+/**
+ * Multicall3 is deployed at its canonical address on Hedera, but viem's stock
+ * chain definitions don't declare it — without this, publicClient.multicall
+ * throws ChainDoesNotSupportContract and every batched read fails. Verified
+ * present via eth_getCode on testnet.
+ */
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
+
 export const hederaTestnet = defineChain({
   id: 296,
   name: "Hedera Testnet",
@@ -26,6 +34,7 @@ export const hederaTestnet = defineChain({
   blockExplorers: {
     default: { name: "HashScan", url: "https://hashscan.io/testnet" },
   },
+  contracts: { multicall3: { address: MULTICALL3 } },
   testnet: true,
 });
 

@@ -1,387 +1,136 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Nav } from "@/components/Nav";
-import { useEmberlend } from "@/lib/useEmberlend";
-import { useLoanState } from "@/lib/useLoanState";
-import { fmtHbar, safeHbarToTinybar, tinybarToHbar } from "@/lib/units";
-import { EMBERLEND_CONTRACT_ID, isContractConfigured } from "@/lib/contract";
-import { hashscanContract, hashscanTx } from "@/lib/mirror";
-
-type Tab = "borrow" | "lend";
+import { AssetTable } from "@/components/AssetTable";
+import { AssetModal, ModalMode } from "@/components/AssetModal";
+import { PortfolioBar } from "@/components/PortfolioBar";
+import { useMarket, AssetRow } from "@/lib/useMarket";
+import { useMarketActions } from "@/lib/useMarketActions";
+import { useHederaAccount } from "@/lib/useHederaAccount";
+import { MARKET_CONTRACT_ID } from "@/lib/tokens";
+import { hashscanContract } from "@/lib/mirror";
 
 export default function Dashboard() {
-  const [tab, setTab] = useState<Tab>("borrow");
-  const [collateral, setCollateral] = useState("");
-  const [borrowAmt, setBorrowAmt] = useState("");
-  const [supplyAmt, setSupplyAmt] = useState("");
-  const [repayAmt, setRepayAmt] = useState("");
+  const [mode, setMode] = useState<ModalMode>("supply");
+  const [active, setActive] = useState<AssetRow | null>(null);
 
-  const { wallet, status, supply, borrow, repay } = useEmberlend();
-  const loan = useLoanState();
+  const { isConnected } = useHederaAccount();
+  const { rows, portfolio, loading, refetch } = useMarket();
+  const actions = useMarketActions();
 
-  const connected = wallet !== null;
-  const canAct = connected && isContractConfigured && !status.pending;
+  // The mirror node and relay lag consensus by a moment, so re-read twice.
+  function refreshSoon() {
+    setTimeout(refetch, 3000);
+    setTimeout(refetch, 9000);
+  }
 
-  // Max borrow comes from the contract's own collateral ratio, not a guess.
-  // Everything here is tinybar, matching what the contract stores.
-  const collateralTb = safeHbarToTinybar(collateral);
-  const maxBorrowTb = collateralTb ? loan.maxBorrowFor(collateralTb) : 0n;
-  const borrowTb = safeHbarToTinybar(borrowAmt);
-  const overMax = !!borrowTb && !!maxBorrowTb && borrowTb > maxBorrowTb;
-  const overLiquidity =
-    !!borrowTb && loan.liquidity !== undefined && borrowTb > loan.liquidity;
-
-  const ltvPct = loan.ratioBps ? (10_000 / Number(loan.ratioBps)) * 100 : null;
-  const ratePct = loan.rateBps ? Number(loan.rateBps) / 100 : null;
-
-  // Keep the repay field in step with the live amount due (it grows with
-  // interest). A small buffer covers accrual between quote and confirmation;
-  // the contract refunds any excess.
-  useEffect(() => {
-    if (loan.due && loan.hasLoan) {
-      const buffered = (loan.due * 10_050n) / 10_000n;
-      setRepayAmt(tinybarToHbar(buffered));
-    }
-  }, [loan.due, loan.hasLoan]);
-
-  async function withRefresh(fn: () => Promise<string>) {
+  async function onFaucet(row: AssetRow) {
     try {
-      await fn();
-      // Mirror/relay lag a moment behind consensus.
-      setTimeout(loan.refetch, 3000);
-      setTimeout(loan.refetch, 8000);
+      await actions.faucet(row.token);
+      refreshSoon();
     } catch {
-      /* status.error already surfaces it */
+      /* actions.tx.error surfaces it */
     }
   }
+
+  const scan = hashscanContract(MARKET_CONTRACT_ID);
 
   return (
     <>
       <Nav />
-      <main className="mx-auto max-w-3xl px-6 py-12">
+      <main className="mx-auto max-w-5xl px-6 py-10">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">Dashboard</h1>
-            <p className="mt-2 text-text-muted">
-              {connected
-                ? `Connected via ${wallet === "evm" ? "MetaMask / EVM" : "HashPack"}.`
-                : "Connect a wallet to borrow, repay, or supply."}
+            <h1 className="font-mono text-3xl font-extrabold tracking-tight">
+              market
+            </h1>
+            <p className="mt-2 font-mono text-sm text-text-muted">
+              {isConnected
+                ? "supply assets to earn, or borrow against your collateral."
+                : "connect a wallet to supply, borrow and track your health factor."}
             </p>
           </div>
-          {isContractConfigured && (
+          {scan && (
             <a
-              href={hashscanContract(EMBERLEND_CONTRACT_ID) ?? "#"}
+              href={scan}
               target="_blank"
               rel="noreferrer"
-              className="pill px-3 py-1 text-xs hover:brightness-125"
+              className="font-mono text-xs text-text-muted underline decoration-dotted hover:text-primary"
             >
-              {EMBERLEND_CONTRACT_ID} ↗
+              {MARKET_CONTRACT_ID} ↗
             </a>
           )}
         </div>
 
-        {!isContractConfigured && (
-          <Banner tone="warn">
-            No contract address set. Deploy <code>EmberLendPool</code> and add{" "}
-            <code>NEXT_PUBLIC_EMBERLEND_ADDRESS</code> to <code>.env.local</code>.
-          </Banner>
-        )}
+        <div className="mt-6">
+          <PortfolioBar portfolio={portfolio} />
+        </div>
 
-        {loan.error && (
-          <Banner tone="error">Could not read contract state: {loan.error}</Banner>
-        )}
-
-        {/* Live pool stats */}
-        <section className="mt-6 grid gap-3 sm:grid-cols-3">
-          <Stat
-            label="Available liquidity"
-            value={`${fmtHbar(loan.liquidity)} ℏ`}
-            loading={loan.loading}
-          />
-          <Stat
-            label="Total borrowed"
-            value={`${fmtHbar(loan.totalBorrowed)} ℏ`}
-            loading={loan.loading}
-          />
-          <Stat
-            label="Borrow rate"
-            value={ratePct !== null ? `${ratePct}% APR` : "—"}
-            loading={loan.loading}
-          />
-        </section>
-
-        {/* The user's live position */}
-        {loan.hasLoan && (
-          <section className="ember-surface mt-6 p-6 shadow-ember-sm">
-            <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold">Your active loan</h2>
-                <span className="pill px-3 py-1 text-xs">● OPEN</span>
-              </div>
-              <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                <Cell label="Collateral" value={`${fmtHbar(loan.collateral)} ℏ`} />
-                <Cell label="Borrowed" value={`${fmtHbar(loan.principal)} ℏ`} />
-                <Cell
-                  label="Interest accrued"
-                  value={`${fmtHbar(loan.interest, 6)} ℏ`}
-                />
-                <Cell
-                  label="Total due"
-                  value={`${fmtHbar(loan.due)} ℏ`}
-                  highlight
-                />
-              </dl>
-              {loan.startedAt !== undefined && loan.startedAt > 0n && (
-                <p className="mt-4 text-xs text-text-muted">
-                  Opened {new Date(Number(loan.startedAt) * 1000).toLocaleString()}
-                </p>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Tabs */}
-        <div className="mt-8 inline-flex rounded-xl border border-border bg-surface p-1">
-          {(["borrow", "lend"] as Tab[]).map((t) => (
+        <div className="mt-8 flex items-center gap-8 border-b border-border">
+          {(["supply", "borrow"] as ModalMode[]).map((m) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`rounded-lg px-6 py-2 text-sm font-semibold capitalize transition ${
-                tab === t
-                  ? "bg-ember-btn text-[#100a06]"
+              key={m}
+              onClick={() => setMode(m)}
+              className={`relative -mb-px flex items-center gap-2 pb-4 font-mono text-lg transition ${
+                mode === m
+                  ? "font-bold text-text"
                   : "text-text-muted hover:text-text"
               }`}
             >
-              {t}
+              <span
+                className={`h-2 w-2 ${
+                  mode === m ? "bg-success" : "bg-text-muted/50"
+                }`}
+              />
+              {m} assets
+              {mode === m && (
+                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-primary" />
+              )}
             </button>
           ))}
+          <span className="ml-auto pb-4 font-mono text-sm text-text-muted">
+            {mode === "supply" ? "earn yield" : "borrow power"}
+          </span>
         </div>
 
-        <section className="ember-surface mt-4 p-8 shadow-ember-sm">
-          <div className="relative z-10">
-            {tab === "borrow" ? (
-              loan.hasLoan ? (
-                <div className="space-y-6">
-                  <p className="text-text-muted">
-                    You have an open loan. Repay it to reclaim your collateral
-                    before borrowing again.
-                  </p>
-                  <Field
-                    label="Repay (HBAR)"
-                    value={repayAmt}
-                    onChange={setRepayAmt}
-                    placeholder="Amount due incl. interest"
-                  />
-                  <p className="text-xs text-text-muted">
-                    Pre-filled with the live amount due plus a 0.5% buffer for
-                    interest accruing while you confirm. Any excess is refunded.
-                  </p>
-                  <ActionButton
-                    disabled={!canAct || !repayAmt}
-                    pending={status.pending}
-                    onClick={() => withRefresh(() => repay(repayAmt))}
-                    label="Repay & reclaim collateral"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <Field
-                    label="Collateral (HBAR)"
-                    value={collateral}
-                    onChange={setCollateral}
-                    placeholder="0.00"
-                  />
-                  <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-text-muted">
-                    Max borrow
-                    {ltvPct ? ` at ${ltvPct.toFixed(1)}% LTV` : ""}:{" "}
-                    <span className="font-semibold text-primary">
-                      {fmtHbar(maxBorrowTb)} ℏ
-                    </span>
-                  </div>
-                  <Field
-                    label="Borrow amount (HBAR)"
-                    value={borrowAmt}
-                    onChange={setBorrowAmt}
-                    placeholder="0.00"
-                  />
-                  {overMax && (
-                    <p className="text-sm text-danger">
-                      Exceeds max borrow for that collateral.
-                    </p>
-                  )}
-                  {!overMax && overLiquidity && (
-                    <p className="text-sm text-danger">
-                      Pool only has {fmtHbar(loan.liquidity)} ℏ available.
-                    </p>
-                  )}
-                  <ActionButton
-                    disabled={
-                      !canAct ||
-                      overMax ||
-                      overLiquidity ||
-                      !collateral ||
-                      !borrowAmt
-                    }
-                    pending={status.pending}
-                    onClick={() =>
-                      withRefresh(() => borrow(collateral, borrowAmt))
-                    }
-                    label="Lock collateral & borrow"
-                  />
-                </div>
-              )
-            ) : (
-              <div className="space-y-4">
-                <Field
-                  label="Deposit to treasury (HBAR)"
-                  value={supplyAmt}
-                  onChange={setSupplyAmt}
-                  placeholder="0.00"
-                />
-                <div className="rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-text-muted">
-                  Pool size:{" "}
-                  <span className="font-semibold text-primary">
-                    {fmtHbar(loan.totalSupplied)} ℏ
-                  </span>{" "}
-                  supplied · {fmtHbar(loan.liquidity)} ℏ idle
-                </div>
-                <ActionButton
-                  disabled={!canAct || !supplyAmt}
-                  pending={status.pending}
-                  onClick={() => withRefresh(() => supply(supplyAmt))}
-                  label="Supply liquidity"
-                />
-              </div>
-            )}
+        <div className="mt-6">
+          {loading && rows.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-surface px-6 py-16 text-center font-mono text-text-muted">
+              loading markets…
+            </div>
+          ) : (
+            <AssetTable
+              rows={rows}
+              mode={mode}
+              connected={isConnected}
+              onAct={setActive}
+              onFaucet={onFaucet}
+            />
+          )}
+        </div>
 
-            {status.error && <Banner tone="error">{status.error}</Banner>}
-            {status.ref && (
-              <Banner tone="ok">
-                Submitted:{" "}
-                <a
-                  href={hashscanTx(status.ref) ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all font-mono text-xs underline"
-                >
-                  {status.ref}
-                </a>
-              </Banner>
-            )}
-          </div>
-        </section>
+        {actions.tx.error && !active && (
+          <p className="mt-4 break-words font-mono text-sm text-danger">
+            {actions.tx.error}
+          </p>
+        )}
+        {actions.tx.pending && !active && (
+          <p className="mt-4 font-mono text-sm text-text-muted">
+            {actions.tx.step}
+          </p>
+        )}
       </main>
+
+      {active && (
+        <AssetModal
+          row={active}
+          mode={mode}
+          borrowableUsd={portfolio.borrowableUsd}
+          onClose={() => setActive(null)}
+          onDone={refreshSoon}
+        />
+      )}
     </>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  loading,
-}: {
-  label: string;
-  value: string;
-  loading: boolean;
-}) {
-  return (
-    <div className="ember-surface px-5 py-4">
-      <div className="relative z-10">
-        <p className="text-xs uppercase tracking-wide text-text-muted">{label}</p>
-        <p className="mt-1 text-lg font-bold text-primary">
-          {loading ? "…" : value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function Cell({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-text-muted">{label}</dt>
-      <dd
-        className={`mt-1 font-bold ${highlight ? "text-primary" : "text-text"}`}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function ActionButton({
-  disabled,
-  pending,
-  onClick,
-  label,
-}: {
-  disabled: boolean;
-  pending: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="ember-btn w-full rounded-2xl py-4 text-base disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      {pending ? "Confirm in wallet…" : label}
-    </button>
-  );
-}
-
-function Banner({
-  tone,
-  children,
-}: {
-  tone: "warn" | "error" | "ok";
-  children: React.ReactNode;
-}) {
-  const map = {
-    warn: "border-primary/40 text-primary",
-    error: "border-danger/50 text-danger",
-    ok: "border-success/40 text-success",
-  } as const;
-  return (
-    <div
-      className={`mt-6 rounded-xl border bg-surface-raised px-4 py-3 text-sm ${map[tone]}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value?: string;
-  onChange?: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm text-text-muted">{label}</span>
-      <input
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        placeholder={placeholder}
-        className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-lg outline-none focus:border-primary"
-      />
-    </label>
   );
 }
