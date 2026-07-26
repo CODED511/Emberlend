@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Nav } from "@/components/Nav";
 import { AssetTable } from "@/components/AssetTable";
-import { AssetModal, ModalMode } from "@/components/AssetModal";
+import { AssetModal, ModalMode, Side } from "@/components/AssetModal";
 import { PortfolioBar } from "@/components/PortfolioBar";
+import { YourBorrows } from "@/components/YourBorrows";
 import { useMarket, AssetRow } from "@/lib/useMarket";
 import { useMarketActions } from "@/lib/useMarketActions";
 import { useHederaAccount } from "@/lib/useHederaAccount";
@@ -14,6 +15,12 @@ import { hashscanContract } from "@/lib/mirror";
 export default function Dashboard() {
   const [mode, setMode] = useState<ModalMode>("supply");
   const [active, setActive] = useState<AssetRow | null>(null);
+  const [activeSide, setActiveSide] = useState<Side | undefined>();
+
+  function openAsset(row: AssetRow, side?: Side) {
+    setActiveSide(side);
+    setActive(row);
+  }
 
   const { isConnected } = useHederaAccount();
   const { rows, portfolio, loading, refetch } = useMarket();
@@ -104,11 +111,22 @@ export default function Dashboard() {
               rows={rows}
               mode={mode}
               connected={isConnected}
-              onAct={setActive}
+              onAct={(row) => openAsset(row)}
               onFaucet={onFaucet}
             />
           )}
         </div>
+
+        {mode === "borrow" && (
+          <div className="mt-6">
+            <YourBorrows
+              rows={rows}
+              portfolio={portfolio}
+              connected={isConnected}
+              onAct={openAsset}
+            />
+          </div>
+        )}
 
         {actions.tx.error && !active && (
           <p className="mt-4 break-words font-mono text-sm text-danger">
@@ -126,8 +144,12 @@ export default function Dashboard() {
         <AssetModal
           row={active}
           mode={mode}
+          initialSide={activeSide}
           borrowableUsd={portfolio.borrowableUsd}
-          onClose={() => setActive(null)}
+          onClose={() => {
+            setActive(null);
+            setActiveSide(undefined);
+          }}
           onDone={refreshSoon}
         />
       )}

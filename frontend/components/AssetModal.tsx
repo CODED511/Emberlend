@@ -7,7 +7,7 @@ import { useMarketActions } from "@/lib/useMarketActions";
 import { TokenIcon } from "./TokenIcon";
 
 export type ModalMode = "supply" | "borrow";
-type Side = "supply" | "withdraw" | "borrow" | "repay";
+export type Side = "supply" | "withdraw" | "borrow" | "repay";
 
 const SIDES: Record<ModalMode, [Side, Side]> = {
   supply: ["supply", "withdraw"],
@@ -25,17 +25,20 @@ const SIDES: Record<ModalMode, [Side, Side]> = {
 export function AssetModal({
   row,
   mode,
+  initialSide,
   borrowableUsd,
   onClose,
   onDone,
 }: {
   row: AssetRow;
   mode: ModalMode;
+  /** Opens straight onto a given tab, e.g. repay from the borrows panel. */
+  initialSide?: Side;
   borrowableUsd: bigint;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [side, setSide] = useState<Side>(SIDES[mode][0]);
+  const [side, setSide] = useState<Side>(initialSide ?? SIDES[mode][0]);
   const [amount, setAmount] = useState("");
   const [pct, setPct] = useState(0);
   const actions = useMarketActions();
